@@ -2,7 +2,7 @@
 
 const
   Dbus= require( "dbus-native"),
-  EventEmitter= require("events").EventEmitter
+  EventEmitter= require("events").EventEmitter,
   xos= require( "xml-object-stream-sax")()
 const
   Method= require("./Method"),
@@ -10,21 +10,25 @@ const
 
 function Introspection(opath, service){
 	let
-	  xml= invokeIntrospection(opath, service._service),
+	  xml= invokeIntrospect(opath, service._service),
 	  interfaces= xml.then(buildInterfaces(opath, service)),
 	  nodes= xml.then(buildNodes(opath, service)),
-	  allNodes= Promise.all(nodes)
+	  allNodes= Promise.all([nodes])
 	return Promise.all([interfaces, allNodes])
 }
 
 function invokeIntrospect(opath, service){
-	return new Promsie(function(resolve){
-		service.getInterface(opath, "org.freedesktop.DBus.Introspection", function(err, introspection){
-			introspection.Introspect(function(err, xml){
-				resolve(xml)
-			})
+	return new Promise(function(resolve, reject){
+		service.getInterface(opath, "org.freedesktop.DBus.Introspectable", function(err, introspection){
+			if(err){
+				reject(err)
+			}else{
+				introspection.Introspect(function(err, xml){
+					resolve(xml)
+				})
+			}
 		})
-	}
+	})
 }
 
 function buildInterfaces(o, opath){
@@ -54,9 +58,12 @@ function buildInterfaces(o, opath){
 function buildNodes(o, opath){
 	return function(xml){
 		const nodes= xos(xml, "/node/node").then(nodes => {
-			return nodes.map(node => opath + "/" + node.attribute.name)
+			const
+			  opaths= nodes.map(node => opath + "/" + node.attribute.name),
+			  intros= opaths.map(opath=> Introspection(opath, this.service))
+			return Promise.all(intros)
 		})
 	}
 }
 
-
+module.exports= Introspection
